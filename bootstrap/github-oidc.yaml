@@ -156,6 +156,8 @@ Resources:
                 "token.actions.githubusercontent.com:sub":
                   - !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:dev"
                   - !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:prod"
+                  - !Sub "repo:${GitHubOrg}@*/${GitHubRepo}@*:environment:dev"
+                  - !Sub "repo:${GitHubOrg}@*/${GitHubRepo}@*:environment:prod"
       Policies:
         - PolicyName: pilotage-cloudformation
           PolicyDocument:
