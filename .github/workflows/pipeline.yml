@@ -1,6 +1,7 @@
 name: pipeline-devsecops
 
 # 1. Lint  2. Securite statique  3. Deploiement dev  4. Tests  5. Deploiement prod (approbation)
+# Les templates arrivent sprint par sprint : chaque etape ne traite que les fichiers presents.
 on:
   pull_request:
     branches: [main]
@@ -16,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: eu-central-2
+  AWS_REGION: eu-north-1
   GUARD_VERSION: "3.3.0"
 
 jobs:
@@ -28,12 +29,27 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install cfn-lint
-      - name: cfn-lint templates regionaux (eu-central-2)
+      - name: cfn-lint templates regionaux (eu-north-1)
         run: |
-          cfn-lint --regions eu-central-2 -- \
-            templates/00-account.yaml templates/0[1-6]-*.yaml templates/08-*.yaml templates/09-*.yaml bootstrap/*.yaml
+          shopt -s nullglob
+          files=()
+          for f in templates/00-account.yaml templates/0[1-6]-*.yaml templates/08-*.yaml templates/09-*.yaml bootstrap/*.yaml; do
+            if [ -f "$f" ]; then files+=("$f"); fi
+          done
+          echo "Fichiers verifies : ${files[*]}"
+          cfn-lint --regions eu-north-1 -- "${files[@]}"
       - name: cfn-lint templates globaux (us-east-1)
-        run: cfn-lint --regions us-east-1 -- templates/00-budget.yaml templates/07-edge-global.yaml
+        run: |
+          files=()
+          for f in templates/00-budget.yaml templates/07-edge-global.yaml; do
+            if [ -f "$f" ]; then files+=("$f"); fi
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Aucun template global pour l'instant : etape ignoree."
+            exit 0
+          fi
+          echo "Fichiers verifies : ${files[*]}"
+          cfn-lint --regions us-east-1 -- "${files[@]}"
 
   security:
     name: 2 - Securite statique (cfn-guard, checkov, secrets)
@@ -42,19 +58,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - name: Dossiers a analyser
+        run: |
+          dirs="bootstrap"
+          if [ -d templates ]; then dirs="$dirs templates"; fi
+          echo "SCAN_DIRS=$dirs" >> "$GITHUB_ENV"
+          echo "Dossiers analyses : $dirs"
       - name: cfn-guard (port 22, chiffrement, tags)
         run: |
           curl -sSL -o guard.tgz \
             "https://github.com/aws-cloudformation/cloudformation-guard/releases/download/${GUARD_VERSION}/cfn-guard-v3-x86_64-ubuntu-latest.tar.gz"
           tar xzf guard.tgz
+          args=()
+          for d in $SCAN_DIRS; do args+=(-d "$d"); done
           ./cfn-guard-v3-x86_64-ubuntu-latest/cfn-guard validate \
-            -d templates -d bootstrap -r policies/guard --show-summary all
+            "${args[@]}" -r policies/guard --show-summary all
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: checkov (bonnes pratiques CloudFormation)
         run: |
           pip install checkov
-          checkov -d templates -d bootstrap --framework cloudformation --compact --skip-download
+          args=()
+          for d in $SCAN_DIRS; do args+=(-d "$d"); done
+          checkov "${args[@]}" --framework cloudformation --compact --skip-download
       - name: Detection de secrets (gitleaks)
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -71,16 +97,29 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Presence de templates
+        id: tpl
+        run: |
+          if ls templates/*.yaml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Aucun template dans le depot : deploiement ignore (sprint 0)."
+          fi
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+      - name: Verification de l'identite AWS (OIDC)
+        run: aws sts get-caller-identity
       - name: Stacks partagees (budget, edge global, compte)
+        if: steps.tpl.outputs.present == 'true'
         env: { CFN_ROLE_ARN: "${{ vars.CFN_EXEC_ROLE_ARN }}" }
-        run: ./scripts/deploy.sh shared-pre
+        run: bash scripts/deploy.sh shared-pre
       - name: Environnement dev
+        if: steps.tpl.outputs.present == 'true'
         env: { CFN_ROLE_ARN: "${{ vars.CFN_EXEC_ROLE_ARN }}" }
-        run: ./scripts/deploy.sh dev
+        run: bash scripts/deploy.sh dev
 
   tests-dev:
     name: 4 - Tests (connectivite, sante, temps de reponse)
@@ -93,11 +132,17 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Presence de templates
+        id: tpl
+        run: |
+          if ls templates/*.yaml >/dev/null 2>&1; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - run: ./tests/run-pipeline-tests.sh dev
+      - name: Tests dev
+        if: steps.tpl.outputs.present == 'true'
+        run: bash tests/run-pipeline-tests.sh dev
 
   deploy-prod:
     name: 5 - Deploiement prod (validation manuelle)
@@ -110,15 +155,22 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Presence de templates
+        id: tpl
+        run: |
+          if ls templates/*.yaml >/dev/null 2>&1; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Environnement prod
+        if: steps.tpl.outputs.present == 'true'
         env: { CFN_ROLE_ARN: "${{ vars.CFN_EXEC_ROLE_ARN }}" }
-        run: ./scripts/deploy.sh prod
+        run: bash scripts/deploy.sh prod
       - name: Interconnexion (peering ou TGW, VPN, DX)
+        if: steps.tpl.outputs.present == 'true'
         env: { CFN_ROLE_ARN: "${{ vars.CFN_EXEC_ROLE_ARN }}" }
-        run: ./scripts/deploy.sh shared-post
+        run: bash scripts/deploy.sh shared-post
       - name: Tests prod
-        run: ./tests/run-pipeline-tests.sh prod
+        if: steps.tpl.outputs.present == 'true'
+        run: bash tests/run-pipeline-tests.sh prod
