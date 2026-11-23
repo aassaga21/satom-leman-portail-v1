@@ -1,0 +1,230 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SatomCloudNetwork - Amorcage (seul deploiement manuel, une fois) : federation
+  OIDC GitHub Actions -> AWS, role de deploiement GitHub (moindre privilege :
+  ne pilote que CloudFormation sur stack-leman-*) et role d'execution CloudFormation.
+  Stack stack-leman-bootstrap.
+
+Parameters:
+  Suffix:
+    Type: String
+    Default: AA
+  Team:
+    Type: String
+    Default: Assaga
+  GitHubOrg:
+    Type: String
+    Default: Morrad-Satom-IT
+  GitHubRepo:
+    Type: String
+    Default: satom-leman-portail
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: >
+      Un seul fournisseur OIDC token.actions.githubusercontent.com par compte.
+      Verifier avec "aws iam list-open-id-connect-providers" ; true seulement s'il est absent.
+
+Conditions:
+  WithOidc: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidc:
+    Type: AWS::IAM::OIDCProvider
+    Condition: WithOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: prod }
+
+  # Role assume par CloudFormation : c'est lui qui cree les ressources.
+  CfnExecutionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_109
+            comment: Role d'execution CloudFormation limite aux services du projet
+          - id: CKV_AWS_111
+            comment: Role d'execution CloudFormation limite aux services du projet
+          - id: CKV_AWS_108
+            comment: Lecture des parametres SSM publics (AMI)
+          - id: CKV_AWS_107
+            comment: secretsmanager requis pour PreSharedKeyStorage=SecretsManager des VPN (sprint 7)
+    Properties:
+      RoleName: !Sub "role-cfn-exec-leman-${Suffix}"
+      Path: /leman/
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudformation.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref "AWS::AccountId" }
+      Policies:
+        - PolicyName: services-projet
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ServicesReseauEtEdge
+                Effect: Allow
+                Action:
+                  - ec2:*
+                  - elasticloadbalancing:*
+                  - network-firewall:*
+                  - directconnect:*
+                  - route53:*
+                  - cloudfront:*
+                  - wafv2:*
+                  - logs:*
+                  - cloudwatch:*
+                  - sns:*
+                  - kms:*
+                  - guardduty:*
+                  - securityhub:*
+                  - config:*
+                  - budgets:*
+                  - secretsmanager:*
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: "*"
+              - Sid: BucketsProjet
+                Effect: Allow
+                Action: s3:*
+                Resource:
+                  - arn:aws:s3:::stack-leman-*
+                  - arn:aws:s3:::stack-leman-*/*
+              - Sid: RolesProjetUniquement
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PassRole
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/leman/*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/leman/*"
+              - Sid: RolesLiesAuxServices
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: "*"
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: prod }
+
+  # Role assume par GitHub Actions : ne cree rien lui-meme, il pilote CloudFormation.
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: Seules les API de Reachability Analyzer et de tag (sans ARN de ressource a la creation) sont en Resource *
+    Properties:
+      RoleName: !Sub "role-github-deploy-leman-${Suffix}"
+      Path: /leman/
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              StringLike:
+                "token.actions.githubusercontent.com:sub":
+                  - !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:dev"
+                  - !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:prod"
+      Policies:
+        - PolicyName: pilotage-cloudformation
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: StacksDuProjet
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DeleteStack
+                  - cloudformation:GetTemplateSummary
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/stack-leman-*/*"
+              - Sid: LectureGlobale
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:ListExports
+                  - ec2:Describe*
+                  - ec2:GetManagedPrefixListEntries
+                  - elasticloadbalancing:Describe*
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:DescribeAlarms
+                  - ssm:DescribeInstanceInformation
+                  - ssm:GetCommandInvocation
+                  - cloudfront:GetDistribution
+                  - route53:ListResourceRecordSets
+                Resource: "*"
+              - Sid: PasserLeRoleExecution
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CfnExecutionRole.Arn
+              - Sid: TestsViaSsmSurInstancesDuProjet
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:ssm:*::document/AWS-RunShellScript"
+                  - !Sub "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:instance/*"
+                Condition:
+                  StringEqualsIfExists:
+                    "ssm:resourceTag/Equipe": !Ref Team
+              - Sid: ReachabilityAnalyzer
+                Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInsightsPath
+                  - ec2:StartNetworkInsightsAnalysis
+                  - ec2:DeleteNetworkInsightsPath
+                  - ec2:DeleteNetworkInsightsAnalysis
+                  - ec2:CreateTags
+                Resource: "*"
+              - Sid: PublicationStatique
+                Effect: Allow
+                Action: [s3:PutObject, s3:ListBucket, s3:DeleteObject]
+                Resource:
+                  - arn:aws:s3:::stack-leman-*
+                  - arn:aws:s3:::stack-leman-*/*
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: prod }
+
+Outputs:
+  GitHubDeployRoleArn:
+    Value: !GetAtt GitHubDeployRole.Arn
+  CfnExecutionRoleArn:
+    Value: !GetAtt CfnExecutionRole.Arn

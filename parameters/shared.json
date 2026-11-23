@@ -1,0 +1,11 @@
+{
+  "_commentaire": "Stacks partagees (une seule fois pour les deux environnements). Aucun secret.",
+  "common":       { "Suffix": "AA", "Team": "Assaga" },
+  "budget":       { "AlertEmail": "CHANGER-MOI@exemple.ch", "BudgetAmountUsd": "185", "BudgetFilterByTeamTag": "true" },
+  "account":      { "EnableGuardDuty": "false", "EnableSecurityHub": "false", "CreateConfigRecorder": "false", "CreateConfigRules": "true" },
+  "edge-global":  { "PublicDomain": "leman-finance.example", "RateLimitPer5Min": "500", "EnableDnssec": "true" },
+  "interconnect": { "Mode": "peering", "OnPremCidr": "192.168.0.0/16" },
+  "hybrid":       { "EnableVpn": "true", "EnableDirectConnectGateway": "true",
+                    "CustomerGateway1Ip": "203.0.113.10", "CustomerGateway1Asn": "65010",
+                    "CustomerGateway2Ip": "198.51.100.20", "CustomerGateway2Asn": "65020" }
+}

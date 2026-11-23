@@ -1,0 +1,27 @@
+{
+  "_commentaire": "Aucun secret ici. Valeurs non sensibles uniquement.",
+  "common":   { "Env": "dev", "Suffix": "AA", "Team": "Assaga" },
+  "base":     {},
+  "network":  {
+    "VpcCidr": "10.1.0.0/16",
+    "PublicSubnet1aCidr": "10.1.0.0/24",
+    "PrivateSubnet1aCidr": "10.1.1.0/24",
+    "PrivateSubnet1bCidr": "10.1.2.0/24",
+    "FirewallSubnet1aCidr": "10.1.4.0/28",
+    "PublicSubnet1bCidr": "10.1.5.0/24",
+    "PeerVpcCidr": "10.0.0.0/16",
+    "EnableNatGateway": "true",
+    "EnableFirewall": "false",
+    "AllowedDomains": ".amazonaws.com,.amazonlinux.com"
+  },
+  "security": { "PeerVpcCidr": "10.0.0.0/16", "TestClientCidr": "" },
+  "compute":  { "InstanceType": "t3.micro", "CreateTestInstance": "true", "TestInstanceIp": "10.1.1.10", "PeerVpcCidr": "10.0.0.0/16" },
+  "edge":     {
+    "PublicDomain": "leman-finance.example",
+    "PortalHostname": "portefeuilles",
+    "AlbCertificateArn": "",
+    "CloudFrontCertificateArn": "",
+    "OriginProtocolPolicy": "http-only"
+  },
+  "monitoring": { "AlertEmail": "CHANGER-MOI@exemple.ch" }
+}

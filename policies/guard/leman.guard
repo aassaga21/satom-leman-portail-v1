@@ -1,0 +1,86 @@
+# =====================================================================
+# SatomCloudNetwork - regles cfn-guard executees par la pipeline (etape 2)
+# cfn-guard validate -d templates -r policies/guard
+# =====================================================================
+
+# ---------- 1. Aucun port d'administration ouvert a Internet ----------
+let sg_inline_ingress = Resources.*[ Type == 'AWS::EC2::SecurityGroup' ].Properties.SecurityGroupIngress[*]
+let sg_ingress_resources = Resources.*[ Type == 'AWS::EC2::SecurityGroupIngress' ].Properties
+
+rule sg_pas_de_ssh_rdp_depuis_internet_inline when %sg_inline_ingress !empty {
+    %sg_inline_ingress[ CidrIp == "0.0.0.0/0" ] {
+        IpProtocol != "-1"
+        FromPort > 22 or ToPort < 22
+        FromPort > 3389 or ToPort < 3389
+        <<Port 22/3389 (ou tous les ports) ouvert a 0.0.0.0/0 interdit>>
+    }
+    %sg_inline_ingress[ CidrIpv6 == "::/0" ] {
+        IpProtocol != "-1"
+        FromPort > 22 or ToPort < 22
+        FromPort > 3389 or ToPort < 3389
+        <<Port 22/3389 ouvert a ::/0 interdit>>
+    }
+}
+
+rule sg_pas_de_ssh_rdp_depuis_internet_ressources when %sg_ingress_resources !empty {
+    %sg_ingress_resources[ CidrIp == "0.0.0.0/0" ] {
+        IpProtocol != "-1"
+        FromPort > 22 or ToPort < 22
+        FromPort > 3389 or ToPort < 3389
+        <<Port 22/3389 (ou tous les ports) ouvert a 0.0.0.0/0 interdit>>
+    }
+}
+
+# ---------- 2. Chiffrement obligatoire ----------
+let instances = Resources.*[ Type == 'AWS::EC2::Instance' ]
+rule ebs_chiffre when %instances !empty {
+    %instances.Properties.BlockDeviceMappings[*].Ebs.Encrypted == true
+        <<Les volumes EBS doivent etre chiffres>>
+    %instances.Properties.MetadataOptions.HttpTokens == "required"
+        <<IMDSv2 obligatoire>>
+}
+
+let log_groups = Resources.*[ Type == 'AWS::Logs::LogGroup' ]
+rule log_groups_chiffres_kms when %log_groups !empty {
+    %log_groups.Properties.KmsKeyId exists
+        <<Les log groups doivent etre chiffres par une cle KMS>>
+}
+
+let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+rule s3_chiffre_et_prive when %buckets !empty {
+    %buckets.Properties.BucketEncryption.ServerSideEncryptionConfiguration[*].ServerSideEncryptionByDefault.SSEAlgorithm in ["AES256", "aws:kms"]
+        <<Les buckets S3 doivent etre chiffres>>
+    %buckets.Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+    %buckets.Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+        <<Les buckets S3 doivent bloquer l'acces public>>
+}
+
+let topics = Resources.*[ Type == 'AWS::SNS::Topic' ]
+rule sns_chiffre when %topics !empty {
+    %topics.Properties.KmsMasterKeyId exists
+        <<Les topics SNS doivent etre chiffres KMS>>
+}
+
+let kms_symetriques = Resources.*[ Type == 'AWS::KMS::Key'
+                                  Properties.KeySpec !exists ]
+rule kms_rotation when %kms_symetriques !empty {
+    %kms_symetriques.Properties.EnableKeyRotation == true
+        <<La rotation des cles KMS symetriques doit etre activee>>
+}
+
+# ---------- 3. Tags obligatoires ----------
+let taggables = Resources.*[
+    Type in [ 'AWS::EC2::VPC', 'AWS::EC2::Subnet', 'AWS::EC2::Instance',
+              'AWS::EC2::SecurityGroup', 'AWS::EC2::NatGateway', 'AWS::EC2::InternetGateway',
+              'AWS::EC2::TransitGateway', 'AWS::EC2::VPNConnection', 'AWS::EC2::CustomerGateway',
+              'AWS::ElasticLoadBalancingV2::LoadBalancer', 'AWS::ElasticLoadBalancingV2::TargetGroup',
+              'AWS::S3::Bucket', 'AWS::SNS::Topic', 'AWS::KMS::Key', 'AWS::IAM::Role',
+              'AWS::CloudFront::Distribution', 'AWS::WAFv2::WebACL', 'AWS::NetworkFirewall::Firewall' ]
+]
+rule tags_obligatoires when %taggables !empty {
+    %taggables.Properties.Tags exists
+    %taggables.Properties.Tags[ Key == "Projet" ] !empty
+    %taggables.Properties.Tags[ Key == "Equipe" ] !empty
+    %taggables.Properties.Tags[ Key == "Environnement" ] !empty
+        <<Tags Projet, Equipe et Environnement obligatoires>>
+}

@@ -1,0 +1,12 @@
+# Jamais de secrets dans le depot
+*.pem
+*.key
+*.p12
+.env
+*.tfvars
+credentials*
+# Artefacts locaux
+cfn-guard-v3-*/
+guard.tgz
+__pycache__/
+.DS_Store
