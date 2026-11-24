@@ -165,6 +165,26 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              - Sid: AnalyseAccessibilite
+                Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInsightsPath
+                  - ec2:DeleteNetworkInsightsPath
+                  - ec2:StartNetworkInsightsAnalysis
+                  - ec2:DeleteNetworkInsightsAnalysis
+                  - ec2:DescribeNetworkInsightsPaths
+                  - ec2:DescribeNetworkInsightsAnalyses
+                  - tiros:CreateQuery
+                  - tiros:GetQueryAnswer
+                  - tiros:GetQueryExplanation
+                Resource: "*"
+              - Sid: EtiquettesAnalyses
+                Effect: Allow
+                Action: ec2:CreateTags
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: [CreateNetworkInsightsPath, StartNetworkInsightsAnalysis]
               - Sid: StacksDuProjet
                 Effect: Allow
                 Action:
