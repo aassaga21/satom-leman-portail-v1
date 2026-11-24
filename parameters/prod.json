@@ -23,5 +23,5 @@
     "CloudFrontCertificateArn": "",
     "OriginProtocolPolicy": "http-only"
   },
-  "monitoring": { "AlertEmail": "CHANGER-MOI@exemple.ch" }
+  "monitoring": { "AlertEmail": "alexandra.assaga@git.swiss" }
 }

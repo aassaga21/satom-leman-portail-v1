@@ -1,8 +1,8 @@
 {
   "_commentaire": "Stacks partagees (une seule fois pour les deux environnements). Aucun secret.",
   "common":       { "Suffix": "AA", "Team": "Assaga" },
-  "budget":       { "AlertEmail": "CHANGER-MOI@exemple.ch", "BudgetAmountUsd": "185", "BudgetFilterByTeamTag": "true" },
-  "account":      { "EnableGuardDuty": "false", "EnableSecurityHub": "false", "CreateConfigRecorder": "false", "CreateConfigRules": "true" },
+  "budget":       { "AlertEmail": "alexandra.assaga@git.swiss", "BudgetAmountUsd": "185", "BudgetFilterByTeamTag": "true" },
+  "account":      { "EnableGuardDuty": "false", "EnableSecurityHub": "false", "CreateConfigRecorder": "false", "CreateConfigRules": "false" },
   "edge-global":  { "PublicDomain": "leman-finance.example", "RateLimitPer5Min": "500", "EnableDnssec": "true" },
   "interconnect": { "Mode": "peering", "OnPremCidr": "192.168.0.0/16" },
   "hybrid":       { "EnableVpn": "true", "EnableDirectConnectGateway": "true",
