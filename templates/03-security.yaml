@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SatomCloudNetwork - Groupes de securite (sprint 3, durci au sprint 11) :
+  sg-alb, sg-web, sg-app. Aucun port d'administration ouvert.
+  Stack stack-leman-<env>-security.
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, prod]
+  Suffix:
+    Type: String
+    Default: AA
+  Team:
+    Type: String
+    Default: Assaga
+  PeerVpcCidr:
+    Type: String
+    Description: CIDR du VPC homologue autorise sur 8080 (tests peering / TGW)
+  CloudFrontPrefixListId:
+    Type: String
+    Description: ID de la liste geree com.amazonaws.global.cloudfront.origin-facing (fourni par deploy.sh)
+  TestClientCidr:
+    Type: String
+    Default: ""
+    Description: >
+      Optionnel - votre IP publique /32 pour tester l'ALB en direct avant CloudFront.
+      Laisser vide en fonctionnement normal.
+
+Conditions:
+  HasTestClient: !Not [!Equals [!Ref TestClientCidr, ""]]
+
+Resources:
+  SgAlb:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "sg-alb-${Env}-${Suffix}"
+      GroupDescription: ALB - accepte uniquement le prefixe CloudFront (origin-facing)
+      VpcId:
+        Fn::ImportValue: !Sub "leman-${Env}-VpcId"
+      SecurityGroupIngress:
+        - Description: HTTPS depuis CloudFront uniquement
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+        - Description: HTTP depuis CloudFront uniquement (origine CloudFront)
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+      SecurityGroupEgress:
+        - Description: Vers les cibles du VPC
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 8080
+          CidrIp:
+            Fn::ImportValue: !Sub "leman-${Env}-VpcCidr"
+      Tags:
+        - { Key: Name, Value: !Sub "sg-alb-${Env}-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  SgAlbTestClient:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasTestClient
+    Properties:
+      GroupId: !Ref SgAlb
+      Description: Test temporaire depuis le poste de etudiante
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Ref TestClientCidr
+
+  SgWeb:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "sg-web-${Env}-${Suffix}"
+      GroupDescription: Serveurs web - 443 et 80 depuis ALB uniquement
+      VpcId:
+        Fn::ImportValue: !Sub "leman-${Env}-VpcId"
+      SecurityGroupIngress:
+        - Description: HTTPS depuis ALB
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref SgAlb
+        - Description: HTTP depuis ALB
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref SgAlb
+      SecurityGroupEgress:
+        - Description: HTTPS sortant (SSM, depots de paquets)
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: HTTP sortant (depots de paquets)
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - Description: Vers application
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp:
+            Fn::ImportValue: !Sub "leman-${Env}-VpcCidr"
+      Tags:
+        - { Key: Name, Value: !Sub "sg-web-${Env}-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  SgApp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "sg-app-${Env}-${Suffix}"
+      GroupDescription: Application - 8080 depuis sg-web, ALB et VPC homologue
+      VpcId:
+        Fn::ImportValue: !Sub "leman-${Env}-VpcId"
+      SecurityGroupIngress:
+        - Description: 8080 depuis sg-web
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref SgWeb
+        - Description: 8080 depuis ALB (regle /api/* vers tg-app)
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref SgAlb
+        - Description: 8080 depuis le VPC homologue (sprints 5-6)
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref PeerVpcCidr
+        - Description: ICMP depuis le VPC homologue (traceroute)
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref PeerVpcCidr
+      SecurityGroupEgress:
+        - Description: HTTPS sortant (SSM, depots de paquets)
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: HTTP sortant (depots de paquets)
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - Description: Vers le VPC homologue (tests)
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref PeerVpcCidr
+      Tags:
+        - { Key: Name, Value: !Sub "sg-app-${Env}-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+Outputs:
+  SgAlbId:
+    Value: !Ref SgAlb
+    Export: { Name: !Sub "leman-${Env}-SgAlb" }
+  SgWebId:
+    Value: !Ref SgWeb
+    Export: { Name: !Sub "leman-${Env}-SgWeb" }
+  SgAppId:
+    Value: !Ref SgApp
+    Export: { Name: !Sub "leman-${Env}-SgApp" }

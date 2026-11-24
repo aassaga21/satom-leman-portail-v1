@@ -1,0 +1,319 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SatomCloudNetwork - Calcul : web-01 et web-02 (nginx :80, 2 AZ), app-01 (API Python :8080),
+  dev-01 (instance de test, dev uniquement). Acces administrateur via SSM Session
+  Manager uniquement (aucune cle SSH, aucun port 22). EBS chiffre KMS, IMDSv2.
+  Stack stack-leman-<env>-compute.
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, prod]
+  Suffix:
+    Type: String
+    Default: AA
+  Team:
+    Type: String
+    Default: Assaga
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  InstanceType:
+    Type: String
+    Default: t3.micro
+  CreateTestInstance:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+  TestInstanceIp:
+    Type: String
+    Default: 10.1.1.10
+  PeerVpcCidr:
+    Type: String
+
+Conditions:
+  WithTestInstance: !Equals [!Ref CreateTestInstance, "true"]
+
+Resources:
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "role-ec2-leman-${Env}-${Suffix}"
+      Path: /leman/
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /leman/
+      Roles: [!Ref InstanceRole]
+
+  Web01:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      SubnetId:
+        Fn::ImportValue: !Sub "leman-${Env}-PrivateSubnet1a"
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub "leman-${Env}-SgWeb"
+      IamInstanceProfile: !Ref InstanceProfile
+      Monitoring: true
+      EbsOptimized: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            Encrypted: true
+            KmsKeyId:
+              Fn::ImportValue: !Sub "leman-${Env}-KmsKeyArn"
+            DeleteOnTermination: true
+      PropagateTagsToVolumeOnCreation: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          dnf install -y nginx
+          mkdir -p /usr/share/nginx/html/static
+          cat > /usr/share/nginx/html/index.html <<'HTML'
+          <!doctype html><html lang="fr"><head><meta charset="utf-8">
+          <title>Portail Leman Finance</title><link rel="stylesheet" href="/static/style.css"></head>
+          <body><h1>Portail des portefeuilles - Groupe Leman Finance SA</h1>
+          <p>Environnement : ${Env} - servi par web-01</p></body></html>
+          HTML
+          cat > /etc/nginx/default.d/leman.conf <<'CONF'
+          location = /health { access_log off; add_header Content-Type text/plain; return 200 "ok\n"; }
+          CONF
+          systemctl enable --now nginx
+      Tags:
+        - { Key: Name, Value: !Sub "web-01-${Env}-${Suffix}" }
+        - { Key: Role, Value: web }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  Web02:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      SubnetId:
+        Fn::ImportValue: !Sub "leman-${Env}-PrivateSubnet1b"
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub "leman-${Env}-SgWeb"
+      IamInstanceProfile: !Ref InstanceProfile
+      Monitoring: true
+      EbsOptimized: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            Encrypted: true
+            KmsKeyId:
+              Fn::ImportValue: !Sub "leman-${Env}-KmsKeyArn"
+            DeleteOnTermination: true
+      PropagateTagsToVolumeOnCreation: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          dnf install -y nginx
+          mkdir -p /usr/share/nginx/html/static
+          cat > /usr/share/nginx/html/index.html <<'HTML'
+          <!doctype html><html lang="fr"><head><meta charset="utf-8">
+          <title>Portail Leman Finance</title><link rel="stylesheet" href="/static/style.css"></head>
+          <body><h1>Portail des portefeuilles - Groupe Leman Finance SA</h1>
+          <p>Environnement : ${Env} - servi par web-02</p></body></html>
+          HTML
+          cat > /etc/nginx/default.d/leman.conf <<'CONF'
+          location = /health { access_log off; add_header Content-Type text/plain; return 200 "ok\n"; }
+          CONF
+          systemctl enable --now nginx
+      Tags:
+        - { Key: Name, Value: !Sub "web-02-${Env}-${Suffix}" }
+        - { Key: Role, Value: web }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  App01:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      SubnetId:
+        Fn::ImportValue: !Sub "leman-${Env}-PrivateSubnet1b"
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub "leman-${Env}-SgApp"
+      IamInstanceProfile: !Ref InstanceProfile
+      Monitoring: true
+      EbsOptimized: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            Encrypted: true
+            KmsKeyId:
+              Fn::ImportValue: !Sub "leman-${Env}-KmsKeyArn"
+            DeleteOnTermination: true
+      PropagateTagsToVolumeOnCreation: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          mkdir -p /opt/leman
+          cat > /opt/leman/app.py <<'PY'
+          import json, socket
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+          PORTEFEUILLES = [{"id": 1, "client": "Client A", "valeur_chf": 125000},
+                           {"id": 2, "client": "Client B", "valeur_chf": 980000}]
+          class H(BaseHTTPRequestHandler):
+              def _send(self, code, body):
+                  data = json.dumps(body).encode()
+                  self.send_response(code)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(data)))
+                  self.end_headers()
+                  self.wfile.write(data)
+              def do_GET(self):
+                  if self.path == "/api/health":
+                      self._send(200, {"status": "ok", "host": socket.gethostname(), "env": "${Env}"})
+                  elif self.path == "/api/portefeuilles":
+                      self._send(200, PORTEFEUILLES)
+                  elif self.path == "/api/error":
+                      self._send(500, {"error": "erreur provoquee pour le test d'alarme"})
+                  else:
+                      self._send(404, {"error": "introuvable"})
+              def log_message(self, *a):
+                  pass
+          ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()
+          PY
+          cat > /etc/systemd/system/leman-app.service <<'UNIT'
+          [Unit]
+          Description=API Leman
+          After=network-online.target
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/leman/app.py
+          Restart=always
+          User=nobody
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable --now leman-app
+      Tags:
+        - { Key: Name, Value: !Sub "app-01-${Env}-${Suffix}" }
+        - { Key: Role, Value: app }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  SgTest:
+    Type: AWS::EC2::SecurityGroup
+    Condition: WithTestInstance
+    Properties:
+      GroupName: !Sub "sg-test-${Env}-${Suffix}"
+      GroupDescription: Instance de test dev-01 - aucune entree, sortie pour les tests
+      VpcId:
+        Fn::ImportValue: !Sub "leman-${Env}-VpcId"
+      SecurityGroupEgress:
+        - Description: Tests vers le VPC homologue (8080, 22 pour prouver le blocage)
+          IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: !Ref PeerVpcCidr
+        - Description: ICMP vers le VPC homologue (traceroute)
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: !Ref PeerVpcCidr
+        - Description: HTTPS sortant (SSM)
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - { Key: Name, Value: !Sub "sg-test-${Env}-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  Dev01:
+    Type: AWS::EC2::Instance
+    Condition: WithTestInstance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      SubnetId:
+        Fn::ImportValue: !Sub "leman-${Env}-PrivateSubnet1a"
+      PrivateIpAddress: !Ref TestInstanceIp
+      SecurityGroupIds: [!Ref SgTest]
+      IamInstanceProfile: !Ref InstanceProfile
+      Monitoring: true
+      EbsOptimized: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            Encrypted: true
+            KmsKeyId:
+              Fn::ImportValue: !Sub "leman-${Env}-KmsKeyArn"
+            DeleteOnTermination: true
+      PropagateTagsToVolumeOnCreation: true
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          dnf install -y nmap-ncat traceroute bind-utils || true
+      Tags:
+        - { Key: Name, Value: !Sub "dev-01-${Suffix}" }
+        - { Key: Role, Value: test }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+Outputs:
+  Web01Id:
+    Value: !Ref Web01
+    Export: { Name: !Sub "leman-${Env}-Web01Id" }
+  Web01Ip:
+    Value: !GetAtt Web01.PrivateIp
+    Export: { Name: !Sub "leman-${Env}-Web01Ip" }
+  Web02Id:
+    Value: !Ref Web02
+    Export: { Name: !Sub "leman-${Env}-Web02Id" }
+  App01Id:
+    Value: !Ref App01
+    Export: { Name: !Sub "leman-${Env}-App01Id" }
+  App01Ip:
+    Value: !GetAtt App01.PrivateIp
+    Export: { Name: !Sub "leman-${Env}-App01Ip" }
+  Dev01Id:
+    Condition: WithTestInstance
+    Value: !Ref Dev01
