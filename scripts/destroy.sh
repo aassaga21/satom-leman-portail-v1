@@ -4,7 +4,7 @@
 # Pour la demo : destroy.sh shared-post puis destroy.sh dev, puis deploy.sh dev, puis deploy.sh shared-post
 set -euo pipefail
 TARGET="${1:?usage: destroy.sh <dev|prod|shared-post|shared-pre>}"
-REGION="${REGION:-eu-central-2}"
+REGION="${REGION:-eu-north-1}"
 
 del() { # nom region
   local st

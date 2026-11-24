@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fonctions communes aux tests. Chaque test ecrit sa preuve dans docs/preuves/.
 set -euo pipefail
-REGION="${REGION:-eu-central-2}"
+REGION="${REGION:-eu-north-1}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREUVES="$ROOT/docs/preuves"; mkdir -p "$PREUVES"
 STAMP="$(date +%Y%m%d-%H%M%S)"
