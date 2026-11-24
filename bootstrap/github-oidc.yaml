@@ -121,6 +121,8 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/leman/*"
                   - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/leman/*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/role-*-leman-*-${Suffix}"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/stack-leman-*"
               - Sid: RolesLiesAuxServices
                 Effect: Allow
                 Action: iam:CreateServiceLinkedRole
