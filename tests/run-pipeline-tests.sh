@@ -7,7 +7,7 @@ source "$D/lib.sh"; set +e
 has() { aws cloudformation describe-stacks --stack-name "stack-leman-$ENV-$1" --region "$REGION" >/dev/null 2>&1; }
 
 has network && { "$D/s01-subnets.sh" "$ENV" || rc=1; }
-has compute && { "$D/s03-reachability.sh" "$ENV" || rc=1; }
+has compute && [[ "$ENV" == prod ]] && { "$D/s03-reachability.sh" "$ENV" || rc=1; }   # Reachability Analyzer facture (~0,10 USD/analyse) : prod uniquement
 if has edge; then
   "$D/s09-alb.sh" "$ENV" || rc=1
   "$D/perf-p95.sh" "$ENV" 50 || rc=1
