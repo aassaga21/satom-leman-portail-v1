@@ -3,7 +3,7 @@
 # et les propage dans la table prod (le site client ne voit que prod).
 # Idempotent : peut etre relance sans effet de bord.
 set -euo pipefail
-REGION="${REGION:-eu-central-2}"
+REGION="${REGION:-eu-north-1}"
 out() { aws cloudformation describe-stacks --stack-name "$1" --region "$REGION" \
           --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue" --output text; }
 

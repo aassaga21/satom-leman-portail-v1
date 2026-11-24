@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SatomCloudNetwork - Socle par environnement : cle KMS client (CMK) utilisee pour
+  chiffrer EBS, CloudWatch Logs, SNS. Stack stack-leman-<env>-base.
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, prod]
+  Suffix:
+    Type: String
+    Default: AA
+  Team:
+    Type: String
+    Default: Assaga
+
+Resources:
+  KmsKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "CMK leman ${Env} (${Suffix})"
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AdminCompte
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - kms:Encrypt*
+              - kms:Decrypt*
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: "*"
+            Condition:
+              ArnLike:
+                "kms:EncryptionContext:aws:logs:arn": !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"
+          - Sid: AlarmesVersSnsChiffre
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+                - budgets.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: "*"
+      Tags:
+        - { Key: Name, Value: !Sub "kms-leman-${Env}-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  KmsAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/leman-${Env}-${Suffix}"
+      TargetKeyId: !Ref KmsKey
+
+Outputs:
+  KmsKeyArn:
+    Value: !GetAtt KmsKey.Arn
+    Export:
+      Name: !Sub "leman-${Env}-KmsKeyArn"

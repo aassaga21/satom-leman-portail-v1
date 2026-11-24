@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  SatomCloudNetwork - Reseau (sprint 1) : VPC et 5 sous-reseaux sur 2 AZ.
+  Les sections des sprints 2 (routage), 3 (NACL) et 4 (Network Firewall) seront ajoutees ensuite.
+  Stack stack-leman-<env>-network.
+
+Metadata:
+  cfn-lint:
+    config:
+      # Les parametres ci-dessous sont transmis par scripts/deploy.sh depuis parameters/<env>.json.
+      # Ils sont declares des le sprint 1 mais ne seront utilises qu'aux sprints 2 a 4.
+      ignore_checks:
+        - W2001
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, prod]
+  Suffix:
+    Type: String
+    Default: AA
+  Team:
+    Type: String
+    Default: Assaga
+  VpcCidr:
+    Type: String
+    Description: "prod 10.0.0.0/16 - dev 10.1.0.0/16"
+  PublicSubnet1aCidr:
+    Type: String
+  PrivateSubnet1aCidr:
+    Type: String
+  PrivateSubnet1bCidr:
+    Type: String
+  FirewallSubnet1aCidr:
+    Type: String
+  PublicSubnet1bCidr:
+    Type: String
+  PeerVpcCidr:
+    Type: String
+    Description: CIDR du VPC homologue (utilise au sprint 3, NACL privee)
+  EnableNatGateway:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Utilise au sprint 2
+  EnableFirewall:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: Utilise au sprint 4 - attention au cout horaire, a desactiver apres les mesures
+  AllowedDomains:
+    Type: CommaDelimitedList
+    Default: ".amazonaws.com,.amazonlinux.com"
+    Description: Utilise au sprint 4 - liste blanche de domaines (SNI TLS / Host HTTP)
+
+Resources:
+  # ---------------- Sprint 1 : VPC et sous-reseaux ----------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: !Sub "vpc-${Env}-leman-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  # Le groupe de securite par defaut est vide (aucune regle) - bonne pratique CIS
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnet1aCidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-public-1a-${Env}-${Suffix}" }
+        - { Key: Tier, Value: public }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  PublicSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnet1bCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-public-1b-${Env}-${Suffix}" }
+        - { Key: Tier, Value: public }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnet1aCidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-private-1a-${Env}-${Suffix}" }
+        - { Key: Tier, Value: private }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  PrivateSubnet1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnet1bCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-private-1b-${Env}-${Suffix}" }
+        - { Key: Tier, Value: private }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+  FirewallSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref FirewallSubnet1aCidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-fw-1a-${Env}-${Suffix}" }
+        - { Key: Tier, Value: firewall }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: !Ref Team }
+        - { Key: Environnement, Value: !Ref Env }
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+    Export: { Name: !Sub "leman-${Env}-VpcId" }
+  VpcCidr:
+    Value: !Ref VpcCidr
+    Export: { Name: !Sub "leman-${Env}-VpcCidr" }
+  PublicSubnet1a:
+    Value: !Ref PublicSubnet1a
+    Export: { Name: !Sub "leman-${Env}-PublicSubnet1a" }
+  PublicSubnet1b:
+    Value: !Ref PublicSubnet1b
+    Export: { Name: !Sub "leman-${Env}-PublicSubnet1b" }
+  PrivateSubnet1a:
+    Value: !Ref PrivateSubnet1a
+    Export: { Name: !Sub "leman-${Env}-PrivateSubnet1a" }
+  PrivateSubnet1b:
+    Value: !Ref PrivateSubnet1b
+    Export: { Name: !Sub "leman-${Env}-PrivateSubnet1b" }
