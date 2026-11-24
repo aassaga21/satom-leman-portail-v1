@@ -235,7 +235,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Condition: WithTestInstance
     Properties:
-      GroupName: !Sub "sg-test-${Env}-${Suffix}"
+      GroupName: !Sub "leman-test-${Env}-${Suffix}"   # EC2 interdit le prefixe sg-
       GroupDescription: Instance de test dev-01 - aucune entree, sortie pour les tests
       VpcId:
         Fn::ImportValue: !Sub "leman-${Env}-VpcId"
