@@ -34,20 +34,18 @@ Resources:
   SgAlb:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub "sg-alb-${Env}-${Suffix}"
+      GroupName: !Sub "leman-alb-${Env}-${Suffix}"   # EC2 interdit le prefixe sg- ; le tag Name garde sg-alb-...
       GroupDescription: ALB - accepte uniquement le prefixe CloudFront (origin-facing)
       VpcId:
         Fn::ImportValue: !Sub "leman-${Env}-VpcId"
+      # Une seule regle referencant la liste CloudFront : une liste de prefixes compte pour
+      # son nombre maximal d'entrees (~55) dans le quota de 60 regles par groupe.
+      # Deux regles (80 et 443) depasseraient ce quota.
       SecurityGroupIngress:
-        - Description: HTTPS depuis CloudFront uniquement
-          IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          SourcePrefixListId: !Ref CloudFrontPrefixListId
-        - Description: HTTP depuis CloudFront uniquement (origine CloudFront)
+        - Description: HTTP et HTTPS depuis CloudFront uniquement (origin-facing)
           IpProtocol: tcp
           FromPort: 80
-          ToPort: 80
+          ToPort: 443
           SourcePrefixListId: !Ref CloudFrontPrefixListId
       SecurityGroupEgress:
         - Description: Vers les cibles du VPC
@@ -76,7 +74,7 @@ Resources:
   SgWeb:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub "sg-web-${Env}-${Suffix}"
+      GroupName: !Sub "leman-web-${Env}-${Suffix}"
       GroupDescription: Serveurs web - 443 et 80 depuis ALB uniquement
       VpcId:
         Fn::ImportValue: !Sub "leman-${Env}-VpcId"
@@ -117,7 +115,7 @@ Resources:
   SgApp:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub "sg-app-${Env}-${Suffix}"
+      GroupName: !Sub "leman-app-${Env}-${Suffix}"
       GroupDescription: Application - 8080 depuis sg-web, ALB et VPC homologue
       VpcId:
         Fn::ImportValue: !Sub "leman-${Env}-VpcId"
