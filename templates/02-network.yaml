@@ -204,7 +204,8 @@ Resources:
     Condition: CreateNat
     Properties:
       AllocationId: !GetAtt NatEip.AllocationId
-      SubnetId: !Ref PublicSubnet1a
+      # Zone b : le compte partage a atteint le quota de 5 NAT Gateways par zone en eu-north-1a
+      SubnetId: !Ref PublicSubnet1b
       Tags:
         - { Key: Name, Value: !Sub "nat-${Env}-leman-${Suffix}" }
         - { Key: Projet, Value: SatomCloudNetwork }
