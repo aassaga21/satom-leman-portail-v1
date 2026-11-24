@@ -1,0 +1,12 @@
+== Sprint 2 (prod) - 2026-11-24T23:19:57+00:00
+-- app-01 : dnf makecache puis IP de sortie
+DEPOT_OK
+16.192.102.197
+-- IP de sortie d'app-01 : 16.192.102.197
+-- IP publique de la NAT : 16.192.102.197
+[32m[OK][0m depot de paquets joignable depuis app-01
+[32m[OK][0m sortie via la NAT (16.192.102.197)
+-- app-01 : adresse IP publique : None
+[32m[OK][0m app-01 sans IP publique
+-- ALB en direct depuis Internet (doit echouer : sg-alb limite a CloudFront)
+ALB pas encore deploye (sprint 9)

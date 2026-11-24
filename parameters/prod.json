@@ -10,7 +10,7 @@
     "FirewallSubnet1aCidr": "10.0.4.0/28",
     "PublicSubnet1bCidr": "10.0.5.0/24",
     "PeerVpcCidr": "10.1.0.0/16",
-    "EnableNatGateway": "true",
+    "EnableNatGateway": "false",
     "EnableFirewall": "false",
     "AllowedDomains": ".amazonaws.com,.amazonlinux.com"
   },
