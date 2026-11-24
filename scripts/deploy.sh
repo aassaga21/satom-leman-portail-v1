@@ -5,14 +5,14 @@
 #   scripts/deploy.sh dev|prod [stack..]  base network security compute edge monitoring
 #   scripts/deploy.sh shared-post         interconnect (+ hybrid si Mode=tgw)
 # Variables : CFN_ROLE_ARN (role d'execution CloudFormation, recommande)
-#             REGION (defaut eu-central-2)
+#             REGION (defaut eu-north-1)
 # Prerequis : aws cli v2, jq
 # =====================================================================
 set -euo pipefail
 
 TARGET="${1:?usage: deploy.sh <shared-pre|dev|prod|shared-post> [stack...]}"
 shift || true
-REGION="${REGION:-eu-central-2}"
+REGION="${REGION:-eu-north-1}"
 GLOBAL_REGION="us-east-1"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TPL="$ROOT/templates"
